@@ -137,10 +137,23 @@ it as data (see `lib/prompt.js`).
 
 Temperature 0.3, `enable_thinking: false`. `model` is added only if set in settings.
 
+## Images
+
+Add up to 4 images by pasting (Ctrl+V with an image on the clipboard), dragging files onto the panel, or **Add image…**.
+Images are downscaled to at most 1280 px on the long edge and re-encoded as JPEG in the panel, then sent as
+`image_url` data-URL parts in the same chat request. Text and images can be combined; with no text the model
+describes the images.
+
+- Needs `llama-server` started with `--mmproj` (the start script does this). The panel checks `modalities.vision`
+  from `GET /props` and shows an error if vision is not available.
+- `/tokenize` does not count images, so the panel estimates each at `max(1024, ceil(w/28)·ceil(h/28))` tokens and
+  subtracts that from the context budget.
+- Images are kept only in `chrome.storage.session`, never written to disk.
+
 ## Settings
 
 Stored in `chrome.storage.local`, in the collapsible section of the panel: base URL, model (optional), API key
-(optional), default length, temperature.
+(optional), default length, temperature, and "Clear text and images when summarizing".
 
 ## UI states
 

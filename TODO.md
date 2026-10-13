@@ -8,10 +8,14 @@
 - [ ] Context check and the "too long" / "Summarize first part" path
 - [ ] Right-click *Summarize selection* and *Summarize page*, including when the panel is already open
 - [ ] Clear button resets input, summary and notes
-- [ ] Settings save (base URL, model, API key, length, temperature)
+- [ ] Images: paste a screenshot, drop a file, Add image…, remove a thumbnail, 5th image rejected
+- [ ] Images: image alone, image + text, server without `--mmproj` shows the vision error
+- [ ] Images: confirm the token estimate against the server's real `prompt_tokens`
+- [ ] Length dropdown persists across browser restarts
+- [ ] "Clear text and images when summarizing": clears once the request is sent; restores input on error or Cancel with no output
+- [ ] Settings save (base URL, model, API key, length, temperature, clear-on-summarize)
 - [ ] Server off, server loading (503 auto-retry), a huge page, Cancel mid-stream
 - [ ] Panel closed mid-stream
-- [ ] Running while the Balatro bot is using the server
 
 ## Docs
 
@@ -26,5 +30,6 @@
 - [ ] Readability-style article extraction for *Summarize page*
 - [ ] Keyboard shortcut (`commands`) for "summarize selection"
 - [ ] Optional Markdown rendering through a sanitizer
-- [ ] Make `--mmproj` optional in `start-server.sh` until image summaries exist
-- [ ] Summaries of images and screenshots (the server already has `--mmproj` loaded)
+- [x] Paste / drop / pick images in the panel (implemented, untested; see the verify list)
+- [ ] Right-click an image → *Summarize image* (needs fetching `info.srcUrl` from the service worker)
+- [ ] Capture the visible tab as a screenshot

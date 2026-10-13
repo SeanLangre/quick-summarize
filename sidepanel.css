@@ -37,4 +37,10 @@ details { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 8p
 summary { cursor: pointer; color: var(--muted); }
 details label { display: block; margin: 8px 0; }
 details input[type=text], details input[type=password], details input[type=number] { display: block; width: 100%; padding: 5px 8px; margin-top: 2px; }
+.images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.thumb { position: relative; }
+.thumb img { display: block; height: 72px; max-width: 120px; object-fit: cover; border: 1px solid var(--border); border-radius: 6px; }
+.thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0; line-height: 1; border-radius: 50%; }
+main.drag textarea { outline: 2px dashed var(--accent); }
+details label.check { display: flex; align-items: center; gap: 6px; }
 [hidden] { display: none !important; }

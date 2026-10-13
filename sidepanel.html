@@ -22,6 +22,13 @@
     <div id="source" class="meta" hidden></div>
     <textarea id="input" placeholder="Paste text here, or right-click a page or selection → Quick Summarize…" rows="8"></textarea>
 
+    <div id="images" class="images" hidden></div>
+    <div class="row">
+      <button id="add-image" type="button">Add image…</button>
+      <input id="file" type="file" accept="image/*" multiple hidden>
+      <span class="meta" id="image-hint">or paste / drop an image</span>
+    </div>
+
     <div class="row">
       <label>Length
         <select id="length">
@@ -67,6 +74,7 @@
         <option value="long">Long</option>
       </select>
     </label>
+    <label class="check"><input id="s-clearOnSummarize" type="checkbox"> Clear text and images when summarizing</label>
     <label>Temperature <input id="s-temperature" type="number" min="0" max="2" step="0.1"></label>
     <div class="row"><button id="s-save" type="button">Save</button><span id="s-saved" class="meta"></span></div>
   </details>

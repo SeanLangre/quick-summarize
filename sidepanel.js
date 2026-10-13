@@ -1,5 +1,5 @@
-import { DEFAULT_BASE_URL, health, nCtx, tokenize, streamChat, clearPropsCache } from "./lib/llama.js";
-import { LENGTHS, PROMPT_OVERHEAD_TOKENS, buildMessages } from "./lib/prompt.js";
+import { DEFAULT_BASE_URL, health, serverProps, tokenize, streamChat, clearPropsCache } from "./lib/llama.js";
+import { LENGTHS, PROMPT_OVERHEAD_TOKENS, MAX_IMAGES, MAX_IMAGE_EDGE, imageTokens, buildMessages } from "./lib/prompt.js";
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -10,17 +10,19 @@ const el = {
   toolong: $("toolong"), toolongText: $("toolong-text"), firstPart: $("first-part"),
   error: $("error"), result: $("result"), spinner: $("spinner"),
   copy: $("copy"), clear: $("clear"), output: $("output"), cutoff: $("cutoff"),
+  images: $("images"), addImage: $("add-image"), file: $("file"), main: document.querySelector("main"),
   sBaseUrl: $("s-baseUrl"), sModel: $("s-model"), sApiKey: $("s-apiKey"),
-  sLength: $("s-length"), sTemp: $("s-temperature"), sSave: $("s-save"), sSaved: $("s-saved"),
+  sLength: $("s-length"), sClear: $("s-clearOnSummarize"), sTemp: $("s-temperature"), sSave: $("s-save"), sSaved: $("s-saved"),
 };
 
-const DEFAULTS = { baseUrl: DEFAULT_BASE_URL, model: "", apiKey: "", length: "medium", temperature: 0.3 };
+const DEFAULTS = { baseUrl: DEFAULT_BASE_URL, model: "", apiKey: "", length: "medium", temperature: 0.3, clearOnSummarize: false };
 let settings = { ...DEFAULTS };
 let serverState = "unknown";
 let meta = { source: "pasted", title: "", url: "" };
 let controller = null;
 let healthTimer = null;
 let overBudget = null; // { budget } when the current input is too long
+let images = []; // [{ dataUrl, w, h, tokens }]
 
 const conn = () => ({ baseUrl: settings.baseUrl, apiKey: settings.apiKey, model: settings.model });
 
@@ -34,6 +36,7 @@ async function loadSettings() {
   el.sApiKey.value = settings.apiKey;
   el.sLength.value = settings.length;
   el.sTemp.value = settings.temperature;
+  el.sClear.checked = settings.clearOnSummarize;
   el.length.value = settings.length;
 }
 
@@ -45,6 +48,7 @@ el.sSave.addEventListener("click", async () => {
     apiKey: el.sApiKey.value.trim(),
     length: el.sLength.value,
     temperature: Number.isFinite(temp) ? temp : DEFAULTS.temperature,
+    clearOnSummarize: el.sClear.checked,
   };
   await chrome.storage.local.set({ settings });
   clearPropsCache();
@@ -52,6 +56,13 @@ el.sSave.addEventListener("click", async () => {
   el.sSaved.textContent = "Saved";
   setTimeout(() => (el.sSaved.textContent = ""), 1500);
   checkServer();
+});
+
+// The main Length dropdown is the default length: remember it across sessions.
+el.length.addEventListener("change", () => {
+  settings.length = el.length.value;
+  el.sLength.value = settings.length;
+  chrome.storage.local.set({ settings }).catch(() => {});
 });
 
 // ---------- server status ----------
@@ -80,7 +91,8 @@ el.retry.addEventListener("click", checkServer);
 function busy() { return controller !== null; }
 
 function updateButtons() {
-  el.summarize.disabled = busy() || serverState !== "ready" || !el.input.value.trim();
+  el.summarize.disabled = busy() || serverState !== "ready" || !(el.input.value.trim() || images.length);
+  el.addImage.disabled = busy() || images.length >= MAX_IMAGES;
   el.cancel.disabled = !busy();
   el.clear.disabled = busy() || !el.output.textContent;
 }
@@ -111,6 +123,114 @@ el.input.addEventListener("input", () => {
   saveState();
 });
 
+// ---------- images ----------
+
+function readImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      // Downscale to bound the token cost; re-encode as JPEG on a white background.
+      const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve({ dataUrl: canvas.toDataURL("image/jpeg", 0.9), w, h, tokens: imageTokens(w, h) });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`Could not read image "${file.name || "pasted image"}".`));
+    };
+    img.src = url;
+  });
+}
+
+function renderImages() {
+  el.images.textContent = "";
+  el.images.hidden = images.length === 0;
+  images.forEach((im, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "thumb";
+    const t = document.createElement("img");
+    t.src = im.dataUrl;
+    t.alt = `Image ${i + 1}`;
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.textContent = "×";
+    rm.title = "Remove image";
+    rm.addEventListener("click", () => {
+      if (busy()) return;
+      images.splice(i, 1);
+      imagesChanged();
+    });
+    wrap.append(t, rm);
+    el.images.append(wrap);
+  });
+}
+
+function imagesChanged() {
+  el.toolong.hidden = true;
+  overBudget = null;
+  renderImages();
+  updateButtons();
+  saveState();
+}
+
+async function addFiles(files) {
+  const picked = [...files].filter((f) => f.type.startsWith("image/"));
+  if (!picked.length) return;
+  showError("");
+  for (const f of picked) {
+    if (images.length >= MAX_IMAGES) {
+      showError(`At most ${MAX_IMAGES} images.`);
+      break;
+    }
+    try {
+      images.push(await readImage(f));
+    } catch (e) {
+      showError(e.message);
+    }
+  }
+  imagesChanged();
+}
+
+el.addImage.addEventListener("click", () => el.file.click());
+el.file.addEventListener("change", () => {
+  addFiles(el.file.files);
+  el.file.value = "";
+});
+
+document.addEventListener("paste", (e) => {
+  const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+  if (!files.length) return; // plain text: let the textarea handle it
+  e.preventDefault();
+  addFiles(files);
+});
+
+for (const type of ["dragenter", "dragover"]) {
+  document.addEventListener(type, (e) => {
+    if (![...(e.dataTransfer?.types || [])].includes("Files")) return;
+    e.preventDefault();
+    el.main.classList.add("drag");
+  });
+}
+for (const type of ["dragleave", "drop"]) {
+  document.addEventListener(type, (e) => {
+    if (type === "drop") {
+      e.preventDefault();
+      addFiles(e.dataTransfer?.files || []);
+    }
+    el.main.classList.remove("drag");
+  });
+}
+
 // ---------- summarize ----------
 
 async function summarize(text) {
@@ -124,6 +244,8 @@ async function summarize(text) {
 
   const length = el.length.value;
   const { maxTokens } = LENGTHS[length];
+  const sendImages = images;
+  let cleared = null; // { input, images, meta } when the fields were cleared for this request
 
   controller = new AbortController();
   const { signal } = controller;
@@ -132,19 +254,42 @@ async function summarize(text) {
   updateButtons();
 
   try {
-    const [ctx, tokens] = await Promise.all([nCtx(conn()), tokenize(text, conn())]);
-    const budget = ctx - maxTokens - PROMPT_OVERHEAD_TOKENS;
+    const [props, textTokens] = await Promise.all([
+      serverProps(conn()),
+      text ? tokenize(text, conn()) : 0,
+    ]);
+    if (sendImages.length && props.vision === false) {
+      throw new Error("This server has no vision model loaded (start it with --mmproj).");
+    }
+    const imageCost = sendImages.reduce((n, im) => n + im.tokens, 0);
+    const budget = props.nCtx - maxTokens - PROMPT_OVERHEAD_TOKENS - imageCost;
+    const tokens = textTokens;
+    if (budget <= 0) {
+      throw new Error(
+        `The images need ~${imageCost} tokens but the server context is ${props.nCtx}. Remove an image or raise CTX_SIZE.`,
+      );
+    }
     if (tokens > budget) {
       overBudget = { budget, tokens };
-      el.toolongText.textContent = `Text is ~${tokens} tokens; the server fits ~${budget}.`;
+      el.toolongText.textContent = `Text is ~${tokens} tokens; the server fits ~${budget}${imageCost ? " alongside the images" : ""}.`;
       el.toolong.hidden = false;
       el.result.hidden = true;
       return;
     }
 
+    if (settings.clearOnSummarize) {
+      cleared = { input: el.input.value, images, meta };
+      el.input.value = "";
+      images = [];
+      meta = { source: "pasted", title: "", url: "" };
+      setSource();
+      renderImages();
+      updateButtons();
+    }
+
     let first = true;
     const { finishReason } = await streamChat(
-      { messages: buildMessages(text, length, meta), maxTokens, temperature: settings.temperature },
+      { messages: buildMessages(text, length, cleared?.meta ?? meta, sendImages), maxTokens, temperature: settings.temperature },
       conn(),
       {
         signal,
@@ -161,6 +306,14 @@ async function summarize(text) {
     if (e.name !== "AbortError") showError(String(e.message || e).slice(0, 300));
     else if (!el.output.textContent) el.result.hidden = true;
   } finally {
+    // Nothing came back: give the input back so it isn't lost on error or Cancel.
+    if (cleared && !el.output.textContent && !el.input.value && !images.length) {
+      el.input.value = cleared.input;
+      images = cleared.images;
+      meta = cleared.meta;
+      setSource();
+      renderImages();
+    }
     controller = null;
     el.spinner.hidden = true;
     el.copy.disabled = !el.output.textContent;
@@ -214,13 +367,17 @@ el.copy.addEventListener("click", async () => {
 // ---------- persistence of last input/summary ----------
 
 function saveState() {
+  // Images go under their own key so a quota error cannot lose the text state.
+  chrome.storage.session.set({ lastImages: images }).catch(() => {});
   chrome.storage.session.set({
     last: { input: el.input.value, output: el.output.textContent, meta, cut: !el.cutoff.hidden },
   }).catch(() => {});
 }
 
 async function restoreState() {
-  const { last } = await chrome.storage.session.get("last");
+  const { last, lastImages } = await chrome.storage.session.get(["last", "lastImages"]);
+  images = Array.isArray(lastImages) ? lastImages : [];
+  renderImages();
   if (!last) return;
   el.input.value = last.input || "";
   meta = last.meta || meta;
