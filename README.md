@@ -54,8 +54,7 @@ The only external piece is `llama-server` from llama.cpp (see above).
 
 ## The model server
 
-The extension reuses the `llama-server` instance that `qwen-jev-controller` uses (default
-`http://127.0.0.1:8080/v1`, same as `QWEN_BASE_URL`).
+The extension talks to a local `llama-server` instance (default `http://127.0.0.1:8080/v1`, configurable in Settings).
 
 | Fact | Consequence for the extension |
 | --- | --- |
@@ -63,7 +62,7 @@ The extension reuses the `llama-server` instance that `qwen-jev-controller` uses
 | Qwen3.5 thinks by default | Sends `chat_template_kwargs: {enable_thinking: false}`; also strips any `<think>…</think>` |
 | Context size depends on how the server was launched | Reads `n_ctx` from `GET /props` at runtime; never hardcoded |
 | Optional `--api-key` | Optional API key setting, sent as `Authorization: Bearer …` |
-| Shared with the Balatro bot | A summary may queue behind bot requests; the panel shows a waiting state and allows Cancel |
+| Server may be busy with other requests | A summary may queue behind them; the panel shows a waiting state and allows Cancel |
 
 ## Architecture
 
