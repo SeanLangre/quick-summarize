@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quick Summarize</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header>
+    <span id="dot" class="dot" title=""></span>
+    <span id="status">Checking server…</span>
+    <button id="retry" type="button" hidden>Retry</button>
+  </header>
+
+  <div id="offline-help" class="note" hidden>
+    <p>Start it with:</p>
+    <pre>./scripts/start-server.sh</pre>
+  </div>
+
+  <main>
+    <div id="source" class="meta" hidden></div>
+    <textarea id="input" placeholder="Paste text here, or right-click a page or selection → Quick Summarize…" rows="8"></textarea>
+
+    <div class="row">
+      <label>Length
+        <select id="length">
+          <option value="short">Short</option>
+          <option value="medium" selected>Medium</option>
+          <option value="long">Long</option>
+        </select>
+      </label>
+      <span class="spacer"></span>
+      <button id="summarize" type="button" class="primary" disabled>Summarize</button>
+      <button id="cancel" type="button" disabled>Cancel</button>
+    </div>
+
+    <div id="toolong" class="note warn" hidden>
+      <span id="toolong-text"></span>
+      <button id="first-part" type="button">Summarize first part</button>
+    </div>
+
+    <div id="error" class="note err" hidden></div>
+
+    <section id="result" hidden>
+      <div class="row">
+        <h2>Summary</h2>
+        <span class="spacer"></span>
+        <span id="spinner" class="spinner" hidden></span>
+        <button id="copy" type="button" disabled>Copy</button>
+      </div>
+      <div id="output"></div>
+      <div id="cutoff" class="note warn" hidden>The summary was cut off (token limit reached).</div>
+    </section>
+  </main>
+
+  <details id="settings">
+    <summary>Settings</summary>
+    <label>Base URL <input id="s-baseUrl" type="text" spellcheck="false"></label>
+    <label>Model (optional) <input id="s-model" type="text" spellcheck="false"></label>
+    <label>API key (optional) <input id="s-apiKey" type="password" autocomplete="off"></label>
+    <label>Default length
+      <select id="s-length">
+        <option value="short">Short</option>
+        <option value="medium">Medium</option>
+        <option value="long">Long</option>
+      </select>
+    </label>
+    <label>Temperature <input id="s-temperature" type="number" min="0" max="2" step="0.1"></label>
+    <div class="row"><button id="s-save" type="button">Save</button><span id="s-saved" class="meta"></span></div>
+  </details>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
