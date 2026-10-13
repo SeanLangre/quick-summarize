@@ -12,10 +12,10 @@ const el = {
   copy: $("copy"), clear: $("clear"), output: $("output"), cutoff: $("cutoff"),
   images: $("images"), addImage: $("add-image"), file: $("file"), main: document.querySelector("main"),
   sBaseUrl: $("s-baseUrl"), sModel: $("s-model"), sApiKey: $("s-apiKey"),
-  sLength: $("s-length"), sClear: $("s-clearOnSummarize"), sTemp: $("s-temperature"), sSave: $("s-save"), sSaved: $("s-saved"),
+  sLength: $("s-length"), sClear: $("s-clearOnSummarize"), sList: $("s-listMode"), sTemp: $("s-temperature"), sSave: $("s-save"), sSaved: $("s-saved"),
 };
 
-const DEFAULTS = { baseUrl: DEFAULT_BASE_URL, model: "", apiKey: "", length: "medium", temperature: 0.3, clearOnSummarize: false };
+const DEFAULTS = { baseUrl: DEFAULT_BASE_URL, model: "", apiKey: "", length: "medium", temperature: 0.3, clearOnSummarize: false, listMode: false };
 let settings = { ...DEFAULTS };
 let serverState = "unknown";
 let meta = { source: "pasted", title: "", url: "" };
@@ -37,6 +37,7 @@ async function loadSettings() {
   el.sLength.value = settings.length;
   el.sTemp.value = settings.temperature;
   el.sClear.checked = settings.clearOnSummarize;
+  el.sList.checked = settings.listMode;
   el.length.value = settings.length;
 }
 
@@ -49,6 +50,7 @@ el.sSave.addEventListener("click", async () => {
     length: el.sLength.value,
     temperature: Number.isFinite(temp) ? temp : DEFAULTS.temperature,
     clearOnSummarize: el.sClear.checked,
+    listMode: el.sList.checked,
   };
   await chrome.storage.local.set({ settings });
   clearPropsCache();
@@ -67,6 +69,11 @@ el.length.addEventListener("change", () => {
 
 el.sClear.addEventListener("change", () => {
   settings.clearOnSummarize = el.sClear.checked;
+  chrome.storage.local.set({ settings }).catch(() => {});
+});
+
+el.sList.addEventListener("change", () => {
+  settings.listMode = el.sList.checked;
   chrome.storage.local.set({ settings }).catch(() => {});
 });
 
@@ -294,7 +301,7 @@ async function summarize(text) {
 
     let first = true;
     const { finishReason } = await streamChat(
-      { messages: buildMessages(text, length, cleared?.meta ?? meta, sendImages), maxTokens, temperature: settings.temperature },
+      { messages: buildMessages(text, length, cleared?.meta ?? meta, sendImages, settings.listMode), maxTokens, temperature: settings.temperature },
       conn(),
       {
         signal,

@@ -154,6 +154,9 @@ it as data (see `lib/prompt.js`).
 | Medium (default) | 3–5 bullet points | 400 |
 | Long | One-sentence overview, then up to 10 bullets | 900 |
 
+**List mode** (Settings) replaces the length instruction with a strict list format: only `- ` lines, one short item per
+line, no intro or conclusion. Item counts follow the length: up to 3 (Short), 3 to 5 (Medium), up to 10 (Long).
+
 Temperature 0.3, `enable_thinking: false`. `model` is added only if set in settings.
 
 ## Images
@@ -173,7 +176,7 @@ describes the images.
 
 Stored in `chrome.storage.local`:
 
-- **Saved immediately:** the Length dropdown next to Summarize, and "Clear text and images when summarizing" (clears the
+- **Saved immediately:** the Length dropdown next to Summarize, "List mode" (summarize as a strict bullet list), and "Clear text and images when summarizing" (clears the
   text box and images as soon as a request is sent; they come back if it fails or is cancelled with no output).
 - **Saved with the Save button** (collapsible section): base URL, model (optional), API key (optional), temperature.
 
