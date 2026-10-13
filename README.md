@@ -48,7 +48,8 @@ The only external piece is `llama-server` from llama.cpp (see above).
 3. Start the server: `./scripts/start-server.sh`
 4. In `chrome://extensions`, enable Developer mode → **Load unpacked** → select this folder.
 5. Click the toolbar icon to open the side panel, or right-click a page or selection →
-   *Summarize page* / *Summarize selection*.
+   *Summarize page* / *Summarize selection*, or select text and press `Alt+Shift+S`
+   (see [Keyboard shortcuts](#keyboard-shortcuts)).
 6. Check the panel shows a green *Server ready* dot. If it can't connect, fix the base URL under **Settings**.
 
 ## The model server
@@ -69,8 +70,8 @@ The extension reuses the `llama-server` instance that `qwen-jev-controller` uses
 ```mermaid
 flowchart LR
     subgraph Chrome
-        BG["background.js (service worker)<br/>• context menu: selection / page<br/>• grabs text via chrome.scripting<br/>• stashes it in chrome.storage.session<br/>• opens the side panel"]
-        SP["sidepanel.html / js<br/>• text box, length, Summarize / Cancel / Copy / Clear<br/>• health + context checks, settings"]
+        BG["background.js (service worker)<br/>• context menu and keyboard shortcuts: selection / page<br/>• grabs text via chrome.scripting<br/>• stashes it in chrome.storage.session<br/>• opens the side panel"]
+        SP["sidepanel.html / js<br/>• text box, image thumbnails, length, Summarize / Cancel / Copy / Clear<br/>• health + context checks, settings"]
         BG -- "storage.session" --> SP
     end
     SP -- "fetch (streaming)" --> LS["llama-server<br/>127.0.0.1:8080"]
@@ -86,7 +87,7 @@ flowchart LR
 flowchart TD
     root["quick-summarize/"]
     root --> manifest["manifest.json"]
-    root --> bg["background.js<br/>context menus, text capture, open panel"]
+    root --> bg["background.js<br/>context menus, shortcuts, text capture, open panel"]
     root --> sp["sidepanel.html / css / js<br/>UI state, settings, Copy / Cancel / Clear"]
     root --> lib["lib/"]
     lib --> llama["llama.js<br/>health, nCtx, tokenize, streamChat<br/>the only code that talks to the server"]
@@ -101,7 +102,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["Input: paste, or right-click menu"] --> B["GET /health"]
+    A["Input: paste, image, right-click menu or shortcut"] --> B["GET /health"]
     B -- "503" --> B2["Model loading, retry every 2 s"] --> B
     B -- "network error" --> B3["Server offline, Retry"]
     B -- "200" --> C["GET /props + POST /tokenize"]
@@ -112,17 +113,27 @@ flowchart TD
     D -. "Cancel" .-> G["AbortController aborts"]
 ```
 
-1. **Input.** Pasted text, or the right-click menu. *Selection* uses `window.getSelection().toString()` (keeps line
+1. **Input.** Pasted text, images (paste, drop or file picker), the right-click menu, or a keyboard shortcut. *Selection* uses `window.getSelection().toString()` (keeps line
    breaks); *page* uses `document.body.innerText`. The service worker writes `{text, source, title, url}` to
-   `chrome.storage.session` and opens the panel inside the menu-click handler (it needs a user gesture). The panel picks
+   `chrome.storage.session` and opens the panel inside the menu-click or command handler (it needs a user gesture). The panel picks
    it up on load and on `storage.onChanged`.
 2. **Server check** before each request: `GET /health` — `200` ready, `503` model loading, network error = not running.
-3. **Context check.** `n_ctx` from `/props`, input size from `/tokenize`. Budget = `n_ctx − max_tokens − ~300`. Over
+3. **Context check.** `n_ctx` from `/props`, input size from `/tokenize`. Budget = `n_ctx − max_tokens − ~300 − image tokens`. Over
    budget shows "Text is ~N tokens; the server fits ~M" and offers **Summarize first part**.
 4. **Request.** `POST /v1/chat/completions` with `stream: true` and an `AbortController` wired to Cancel.
 5. **Stream.** Parse SSE `data:` lines, append deltas with `textContent`, stop at `[DONE]`. `finish_reason: length`
    shows a "cut off" note.
 6. **Done.** Copy enabled; last input and summary kept in `chrome.storage.session`.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Alt+Shift+S` | Summarize the selected text: opens the panel, fills in the selection, starts summarizing |
+| `Alt+Shift+P` | Summarize the current page |
+| `Alt+Shift+Q` | Open the panel |
+
+Rebind them at `chrome://extensions/shortcuts`. Chrome skips a suggested key that is already in use.
 
 ## Prompt
 
@@ -152,8 +163,11 @@ describes the images.
 
 ## Settings
 
-Stored in `chrome.storage.local`, in the collapsible section of the panel: base URL, model (optional), API key
-(optional), default length, temperature, and "Clear text and images when summarizing".
+Stored in `chrome.storage.local`:
+
+- **Saved immediately:** the Length dropdown next to Summarize, and "Clear text and images when summarizing" (clears the
+  text box and images as soon as a request is sent; they come back if it fails or is cancelled with no output).
+- **Saved with the Save button** (collapsible section): base URL, model (optional), API key (optional), temperature.
 
 ## UI states
 
@@ -172,4 +186,4 @@ Stored in `chrome.storage.local`, in the collapsible section of the panel: base 
 - Model output is rendered with `textContent` only, never `innerHTML`.
 - Keep `llama-server` bound to `127.0.0.1`. It allows cross-origin requests by default, so any website you visit can
   call it from your browser. If that matters, start it with `--api-key` and put the key in the extension settings.
-- Page text is read only on an explicit user action (menu click). No content script runs on every page.
+- Page text is read only on an explicit user action (menu click or keyboard shortcut). No content script runs on every page.

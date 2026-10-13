@@ -17,11 +17,14 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+/**
+ * Opens the panel and hands it the selection or page text of `tab`.
+ * Must be called synchronously from a user gesture (menu click or command),
+ * because sidePanel.open needs one.
+ */
+function summarizeTab(tab, wantSelection, fallbackSelection = "") {
   if (!tab?.id) return;
-  // sidePanel.open needs the user gesture, so call it synchronously first.
   const opened = chrome.sidePanel.open({ windowId: tab.windowId });
-  const wantSelection = info.menuItemId === MENU_SELECTION;
 
   (async () => {
     let text = "";
@@ -37,7 +40,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       // Restricted pages (chrome://, Web Store, PDF viewer, …)
       text = "";
     }
-    if (!text && wantSelection) text = (info.selectionText || "").trim();
+    if (!text && wantSelection) text = fallbackSelection.trim();
 
     await chrome.storage.session.set({
       pending: {
@@ -46,9 +49,22 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         source: wantSelection ? "selection" : "page",
         title: tab.title || "",
         url: tab.url || "",
-        error: text ? null : "Could not read text from this page.",
+        error: text
+          ? null
+          : wantSelection
+            ? "No text selected. Select some text, then try again."
+            : "Could not read text from this page.",
       },
     });
     await opened.catch(() => {});
   })();
+}
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  summarizeTab(tab, info.menuItemId === MENU_SELECTION, info.selectionText || "");
+});
+
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command === "summarize-selection") summarizeTab(tab, true);
+  else if (command === "summarize-page") summarizeTab(tab, false);
 });
