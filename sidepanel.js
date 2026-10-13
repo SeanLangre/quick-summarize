@@ -65,6 +65,11 @@ el.length.addEventListener("change", () => {
   chrome.storage.local.set({ settings }).catch(() => {});
 });
 
+el.sClear.addEventListener("change", () => {
+  settings.clearOnSummarize = el.sClear.checked;
+  chrome.storage.local.set({ settings }).catch(() => {});
+});
+
 // ---------- server status ----------
 
 async function checkServer() {
@@ -253,6 +258,16 @@ async function summarize(text) {
   el.spinner.hidden = false;
   updateButtons();
 
+  if (settings.clearOnSummarize) {
+    cleared = { input: el.input.value, images, meta };
+    el.input.value = "";
+    images = [];
+    meta = { source: "pasted", title: "", url: "" };
+    setSource();
+    renderImages();
+    updateButtons();
+  }
+
   try {
     const [props, textTokens] = await Promise.all([
       serverProps(conn()),
@@ -275,16 +290,6 @@ async function summarize(text) {
       el.toolong.hidden = false;
       el.result.hidden = true;
       return;
-    }
-
-    if (settings.clearOnSummarize) {
-      cleared = { input: el.input.value, images, meta };
-      el.input.value = "";
-      images = [];
-      meta = { source: "pasted", title: "", url: "" };
-      setSource();
-      renderImages();
-      updateButtons();
     }
 
     let first = true;
