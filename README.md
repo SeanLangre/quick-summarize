@@ -4,6 +4,8 @@ A Chrome (Manifest V3) extension that summarizes text with a local Qwen model se
 It summarizes pasted text, a selection, or the current page, and nothing leaves the machine.
 There is no MCP server or client; the extension talks to `llama-server` over plain HTTP.
 
+![Quick Summarize side panel](docs/screenshot.png)
+
 ## Setup
 
 1. `cp .env.example .env` and fill in your paths (`.env` is gitignored).

@@ -9,7 +9,7 @@ const el = {
   summarize: $("summarize"), cancel: $("cancel"),
   toolong: $("toolong"), toolongText: $("toolong-text"), firstPart: $("first-part"),
   error: $("error"), result: $("result"), spinner: $("spinner"),
-  copy: $("copy"), output: $("output"), cutoff: $("cutoff"),
+  copy: $("copy"), clear: $("clear"), output: $("output"), cutoff: $("cutoff"),
   sBaseUrl: $("s-baseUrl"), sModel: $("s-model"), sApiKey: $("s-apiKey"),
   sLength: $("s-length"), sTemp: $("s-temperature"), sSave: $("s-save"), sSaved: $("s-saved"),
 };
@@ -82,6 +82,7 @@ function busy() { return controller !== null; }
 function updateButtons() {
   el.summarize.disabled = busy() || serverState !== "ready" || !el.input.value.trim();
   el.cancel.disabled = !busy();
+  el.clear.disabled = busy() || !el.output.textContent;
 }
 
 function showError(msg) {
@@ -190,6 +191,14 @@ el.firstPart.addEventListener("click", async () => {
     return;
   }
   summarize(part);
+});
+
+el.clear.addEventListener("click", () => {
+  resetResult();
+  showError("");
+  el.result.hidden = true;
+  updateButtons();
+  saveState();
 });
 
 el.copy.addEventListener("click", async () => {
