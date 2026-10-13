@@ -70,8 +70,8 @@ The extension talks to a local `llama-server` instance (default `http://127.0.0.
 flowchart LR
     subgraph Chrome
         BG["background.js (service worker)<br/>• context menu and keyboard shortcuts: selection / page<br/>• grabs text via chrome.scripting<br/>• stashes it in chrome.storage.session<br/>• opens the side panel"]
-        SP["sidepanel.html / js<br/>• text box, image thumbnails, length, Summarize / Cancel / Copy / Clear<br/>• health + context checks, settings"]
-        BG -- "storage.session" --> SP
+        SP["sidepanel.html / js<br/>• text box, image thumbnails, length, Summarize / Cancel / Copy / Clear<br/>• health + context checks, settings<br/>• keeps last input / summary in storage.session"]
+        BG -- "storage.session (pending)" --> SP
     end
     SP -- "fetch (streaming)" --> LS["llama-server<br/>127.0.0.1:8080"]
     LS --- E["GET /health<br/>GET /props<br/>POST /tokenize<br/>POST /v1/chat/completions"]
@@ -90,7 +90,7 @@ flowchart TD
     root --> sp["sidepanel.html / css / js<br/>UI state, settings, Copy / Cancel / Clear"]
     root --> lib["lib/"]
     lib --> llama["llama.js<br/>health, nCtx, tokenize, streamChat<br/>the only code that talks to the server"]
-    lib --> prompt["prompt.js<br/>buildMessages, LENGTHS table"]
+    lib --> prompt["prompt.js<br/>buildMessages, LENGTHS table, image limits and token estimates"]
     root --> scripts["scripts/start-server.sh"]
     root --> env[".env.example"]
     root --> icons["icons/"]
@@ -104,12 +104,21 @@ flowchart TD
     A["Input: paste, image, right-click menu or shortcut"] --> B["GET /health"]
     B -- "503" --> B2["Model loading, retry every 2 s"] --> B
     B -- "network error" --> B3["Server offline, Retry"]
-    B -- "200" --> C["GET /props + POST /tokenize"]
-    C -- "over budget" --> C2["Offer Summarize first part"] --> D
+    B -- "other status" --> B4["Server error, Retry"]
+    B -- "200" --> X["Clear input and images if 'clear on summarize' is on"]
+    X --> C["GET /props (cached) + POST /tokenize (text only), in parallel"]
+    C -- "images but no vision model" --> E1["Error: start server with --mmproj"]
+    C -- "images alone exceed n_ctx" --> E2["Error: remove an image or raise CTX_SIZE"]
+    C -- "text over budget" --> C2["Offer Summarize first part"]
+    C2 -- "truncate + re-tokenize until it fits, then re-run" --> B
     C -- "fits" --> D["POST /v1/chat/completions (stream)"]
     D --> E["Parse SSE, append deltas"]
     E --> F["Done: Copy enabled"]
     D -. "Cancel" .-> G["AbortController aborts"]
+    G -. "nothing received" .-> R["Input restored"]
+    D -. "error before any output" .-> R
+    E1 -.-> R
+    E2 -.-> R
 ```
 
 1. **Input.** Pasted text, images (paste, drop or file picker), the right-click menu, or a keyboard shortcut. *Selection* uses `window.getSelection().toString()` (keeps line
