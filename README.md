@@ -6,13 +6,50 @@ There is no MCP server or client; the extension talks to `llama-server` over pla
 
 ![Quick Summarize side panel](docs/screenshot.png)
 
+## Prerequisites
+
+| Requirement | Notes |
+| --- | --- |
+| Chrome or Chromium 114+ | Needed for the Side Panel API (`chrome.sidePanel`). Other Chromium browsers work if they support it. |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) | Built so that `build/bin/llama-server` exists. GPU offload (`-ngl 99`) needs a CUDA/ROCm/Metal/Vulkan build; drop the flag for CPU-only. |
+| A Qwen GGUF model | A Qwen3.5-style model. Set `MODEL_PATH` in `.env`. |
+| A matching `mmproj` GGUF | Passed as `--mmproj`; only needed for the planned image summaries, but the start script currently requires it. |
+| Bash | Runs `scripts/start-server.sh` (Linux/macOS, or WSL on Windows). |
+| Enough RAM/VRAM | The model plus the KV cache for `CTX_SIZE` (default 16384). |
+
+## Packages
+
+There are none to install. The extension is plain JavaScript (ES modules) with no `package.json`, no bundler,
+no build step, and no runtime dependencies. Everything it uses is built into Chrome:
+
+| API | Used for |
+| --- | --- |
+| `chrome.sidePanel` | The summary UI |
+| `chrome.contextMenus` | *Summarize selection* / *Summarize page* |
+| `chrome.scripting` + `activeTab` | Reading the selection or page text on a user action |
+| `chrome.storage` (`local`, `session`) | Settings, and the last input and summary |
+| `fetch` + `AbortController` | Streaming requests to `llama-server`, and Cancel |
+
+The only external piece is `llama-server` from llama.cpp (see above).
+
 ## Setup
 
-1. `cp .env.example .env` and fill in your paths (`.env` is gitignored).
-2. Start the server: `./scripts/start-server.sh`
-3. In `chrome://extensions`, enable Developer mode → **Load unpacked** → select this folder.
-4. Click the toolbar icon to open the side panel, or right-click a page or selection →
+1. Clone this repo.
+2. `cp .env.example .env` and fill in your paths (`.env` is gitignored):
+
+   | Variable | Meaning | Default |
+   | --- | --- | --- |
+   | `LLAMA_CPP_DIR` | Your llama.cpp checkout | none |
+   | `MODEL_PATH` | Model `.gguf` | none |
+   | `MMPROJ_PATH` | Multimodal projector `.gguf` | none |
+   | `HOST` / `PORT` | Where the server listens | `127.0.0.1` / `8080` |
+   | `CTX_SIZE` | Context size passed as `--ctx-size` | `16384` |
+
+3. Start the server: `./scripts/start-server.sh`
+4. In `chrome://extensions`, enable Developer mode → **Load unpacked** → select this folder.
+5. Click the toolbar icon to open the side panel, or right-click a page or selection →
    *Summarize page* / *Summarize selection*.
+6. Check the panel shows a green *Server ready* dot. If it can't connect, fix the base URL under **Settings**.
 
 ## The model server
 
@@ -29,19 +66,15 @@ The extension reuses the `llama-server` instance that `qwen-jev-controller` uses
 
 ## Architecture
 
-```
-┌──────────── Chrome ────────────────────────────────┐
-│ background.js (service worker)                     │
-│   • context menu: "Summarize selection" / "page"   │
-│   • grabs text via chrome.scripting                │
-│   • stashes it in chrome.storage.session           │
-│   • opens the side panel                           │
-│                                                    │
-│ sidepanel.html/js  ── fetch (streaming) ───────────┼──► llama-server 127.0.0.1:8080
-│   • text box, length, Summarize / Cancel / Copy    │      GET  /health
-│   • health + context checks, settings              │      GET  /props
-└────────────────────────────────────────────────────┘      POST /tokenize
-                                                            POST /v1/chat/completions
+```mermaid
+flowchart LR
+    subgraph Chrome
+        BG["background.js (service worker)<br/>• context menu: selection / page<br/>• grabs text via chrome.scripting<br/>• stashes it in chrome.storage.session<br/>• opens the side panel"]
+        SP["sidepanel.html / js<br/>• text box, length, Summarize / Cancel / Copy / Clear<br/>• health + context checks, settings"]
+        BG -- "storage.session" --> SP
+    end
+    SP -- "fetch (streaming)" --> LS["llama-server<br/>127.0.0.1:8080"]
+    LS --- E["GET /health<br/>GET /props<br/>POST /tokenize<br/>POST /v1/chat/completions"]
 ```
 
 - **Side panel, not popup:** a popup closes (killing its request) when it loses focus, and local inference takes 10–60 s.
@@ -49,18 +82,35 @@ The extension reuses the `llama-server` instance that `qwen-jev-controller` uses
   directly. Closing the panel cancels the request.
 - **CORS:** extension pages with `host_permissions` for `http://127.0.0.1/*` are not subject to CORS, so no proxy is needed.
 
-```
-quick-summarize/
-├── manifest.json
-├── background.js        # service worker: context menus, text capture, open panel
-├── sidepanel.html/css/js  # UI state, settings, Copy/Cancel
-├── lib/llama.js         # health(), nCtx(), tokenize(), streamChat() — the only code that talks to the server
-├── lib/prompt.js        # buildMessages(), LENGTHS table
-├── scripts/start-server.sh
-└── icons/
+```mermaid
+flowchart TD
+    root["quick-summarize/"]
+    root --> manifest["manifest.json"]
+    root --> bg["background.js<br/>context menus, text capture, open panel"]
+    root --> sp["sidepanel.html / css / js<br/>UI state, settings, Copy / Cancel / Clear"]
+    root --> lib["lib/"]
+    lib --> llama["llama.js<br/>health, nCtx, tokenize, streamChat<br/>the only code that talks to the server"]
+    lib --> prompt["prompt.js<br/>buildMessages, LENGTHS table"]
+    root --> scripts["scripts/start-server.sh"]
+    root --> env[".env.example"]
+    root --> icons["icons/"]
+    root --> docs["docs/screenshot.png"]
 ```
 
 ## Request flow
+
+```mermaid
+flowchart TD
+    A["Input: paste, or right-click menu"] --> B["GET /health"]
+    B -- "503" --> B2["Model loading, retry every 2 s"] --> B
+    B -- "network error" --> B3["Server offline, Retry"]
+    B -- "200" --> C["GET /props + POST /tokenize"]
+    C -- "over budget" --> C2["Offer Summarize first part"] --> D
+    C -- "fits" --> D["POST /v1/chat/completions (stream)"]
+    D --> E["Parse SSE, append deltas"]
+    E --> F["Done: Copy enabled"]
+    D -. "Cancel" .-> G["AbortController aborts"]
+```
 
 1. **Input.** Pasted text, or the right-click menu. *Selection* uses `window.getSelection().toString()` (keeps line
    breaks); *page* uses `document.body.innerText`. The service worker writes `{text, source, title, url}` to
@@ -102,7 +152,7 @@ Stored in `chrome.storage.local`, in the collapsible section of the panel: base 
 | Too long | Token count vs budget, "Summarize first part" |
 | Waiting / streaming | Spinner until the first token, then live text; Cancel enabled |
 | Error | The server's error message (first 300 chars), Retry |
-| Done | Summary, Copy, "cut off" note if `finish_reason: length` |
+| Done | Summary, Copy, "cut off" note if `finish_reason: length`; Clear resets the panel |
 
 ## Security notes
 
