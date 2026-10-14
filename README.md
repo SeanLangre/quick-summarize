@@ -6,6 +6,10 @@ There is no MCP server or client; the extension talks to `llama-server` over pla
 
 ![Quick Summarize demo](docs/demo.gif)
 
+*Summarize page*, then read the summary in the centered reading overlay:
+
+![Summarize page and reading overlay](docs/demo-reader.gif)
+
 ## Prerequisites
 
 | Requirement | Notes |
@@ -94,7 +98,7 @@ flowchart TD
     root --> scripts["scripts/start-server.sh"]
     root --> env[".env.example"]
     root --> icons["icons/"]
-    root --> docs["docs/demo.gif"]
+    root --> docs["docs/demo.gif, demo-reader.gif"]
 ```
 
 ## Request flow
