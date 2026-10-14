@@ -1,4 +1,5 @@
 import { DEFAULT_BASE_URL, health, serverProps, tokenize, streamChat, clearPropsCache } from "./lib/llama.js";
+import { showReaderOverlay } from "./lib/overlay.js";
 import { LENGTHS, PROMPT_OVERHEAD_TOKENS, MAX_IMAGES, MAX_IMAGE_EDGE, imageTokens, buildMessages } from "./lib/prompt.js";
 
 const $ = (id) => document.getElementById(id);
@@ -6,16 +7,16 @@ const el = {
   dot: $("dot"), status: $("status"), retry: $("retry"),
   offlineHelp: $("offline-help"),
   source: $("source"), input: $("input"), length: $("length"),
-  summarize: $("summarize"), cancel: $("cancel"),
+  summarize: $("summarize"), summarizePage: $("summarize-page"), cancel: $("cancel"),
   toolong: $("toolong"), toolongText: $("toolong-text"), firstPart: $("first-part"),
   error: $("error"), result: $("result"), spinner: $("spinner"),
-  copy: $("copy"), clear: $("clear"), output: $("output"), cutoff: $("cutoff"),
-  images: $("images"), addImage: $("add-image"), file: $("file"), main: document.querySelector("main"),
+  copy: $("copy"), read: $("read"), output: $("output"), cutoff: $("cutoff"),
+  images: $("images"), main: document.querySelector("main"),
   sBaseUrl: $("s-baseUrl"), sModel: $("s-model"), sApiKey: $("s-apiKey"),
-  sLength: $("s-length"), sClear: $("s-clearOnSummarize"), sList: $("s-listMode"), sTemp: $("s-temperature"), sSave: $("s-save"), sSaved: $("s-saved"),
+  sLength: $("s-length"), sClear: $("s-clearOnSummarize"), sList: $("s-listMode"), sAutoRead: $("s-autoRead"), sTemp: $("s-temperature"), sSave: $("s-save"), sSaved: $("s-saved"),
 };
 
-const DEFAULTS = { baseUrl: DEFAULT_BASE_URL, model: "", apiKey: "", length: "medium", temperature: 0.3, clearOnSummarize: false, listMode: false };
+const DEFAULTS = { baseUrl: DEFAULT_BASE_URL, model: "", apiKey: "", length: "medium", temperature: 0.3, clearOnSummarize: false, listMode: false, autoRead: false };
 let settings = { ...DEFAULTS };
 let serverState = "unknown";
 let meta = { source: "pasted", title: "", url: "" };
@@ -38,6 +39,7 @@ async function loadSettings() {
   el.sTemp.value = settings.temperature;
   el.sClear.checked = settings.clearOnSummarize;
   el.sList.checked = settings.listMode;
+  el.sAutoRead.checked = settings.autoRead;
   el.length.value = settings.length;
 }
 
@@ -51,6 +53,7 @@ el.sSave.addEventListener("click", async () => {
     temperature: Number.isFinite(temp) ? temp : DEFAULTS.temperature,
     clearOnSummarize: el.sClear.checked,
     listMode: el.sList.checked,
+    autoRead: el.sAutoRead.checked,
   };
   await chrome.storage.local.set({ settings });
   clearPropsCache();
@@ -74,6 +77,15 @@ el.sClear.addEventListener("change", () => {
 
 el.sList.addEventListener("change", () => {
   settings.listMode = el.sList.checked;
+  chrome.storage.local.set({ settings }).catch(() => {});
+});
+
+el.sAutoRead.addEventListener("change", async () => {
+  // Ask for page access now, while there is a user gesture; the auto-open later has none.
+  if (el.sAutoRead.checked && !(await chrome.permissions.request({ origins: ["<all_urls>"] }).catch(() => false))) {
+    el.sAutoRead.checked = false;
+  }
+  settings.autoRead = el.sAutoRead.checked;
   chrome.storage.local.set({ settings }).catch(() => {});
 });
 
@@ -104,9 +116,9 @@ function busy() { return controller !== null; }
 
 function updateButtons() {
   el.summarize.disabled = busy() || serverState !== "ready" || !(el.input.value.trim() || images.length);
-  el.addImage.disabled = busy() || images.length >= MAX_IMAGES;
+  el.summarizePage.disabled = busy() || serverState !== "ready";
   el.cancel.disabled = !busy();
-  el.clear.disabled = busy() || !el.output.textContent;
+  el.read.disabled = busy() || !el.output.textContent;
 }
 
 function showError(msg) {
@@ -213,12 +225,6 @@ async function addFiles(files) {
   imagesChanged();
 }
 
-el.addImage.addEventListener("click", () => el.file.click());
-el.file.addEventListener("change", () => {
-  addFiles(el.file.files);
-  el.file.value = "";
-});
-
 document.addEventListener("paste", (e) => {
   const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
   if (!files.length) return; // plain text: let the textarea handle it
@@ -314,6 +320,10 @@ async function summarize(text) {
     );
     el.cutoff.hidden = finishReason !== "length";
     el.copy.disabled = !el.output.textContent;
+    if (settings.autoRead && el.output.textContent) {
+      // Overlay only: no popup-window fallback for pages that cannot be scripted.
+      showOverlay(el.output.textContent, (cleared?.meta ?? meta).title).catch(() => {});
+    }
   } catch (e) {
     if (e.name !== "AbortError") showError(String(e.message || e).slice(0, 300));
     else if (!el.output.textContent) el.result.hidden = true;
@@ -335,6 +345,35 @@ async function summarize(text) {
 }
 
 el.summarize.addEventListener("click", () => summarize(el.input.value.trim()));
+
+el.summarizePage.addEventListener("click", async () => {
+  showError("");
+  // Must be the first call: the permission prompt needs the click's user gesture.
+  if (!(await chrome.permissions.request({ origins: ["<all_urls>"] }).catch(() => false))) {
+    showError("Allow access to sites to summarize the page.");
+    return;
+  }
+  let text = "";
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => document.body.innerText,
+    });
+    text = (result?.result || "").trim();
+  } catch {
+    // Restricted pages (chrome://, Web Store, PDF viewer, …)
+  }
+  if (!text) {
+    showError("Could not read text from this page.");
+    return;
+  }
+  el.input.value = text;
+  meta = { source: "page", title: tab.title || "", url: tab.url || "" };
+  setSource();
+  updateButtons();
+  summarize(text);
+});
 el.cancel.addEventListener("click", () => controller?.abort());
 
 el.firstPart.addEventListener("click", async () => {
@@ -358,14 +397,6 @@ el.firstPart.addEventListener("click", async () => {
   summarize(part);
 });
 
-el.clear.addEventListener("click", () => {
-  resetResult();
-  showError("");
-  el.result.hidden = true;
-  updateButtons();
-  saveState();
-});
-
 el.copy.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(el.output.textContent);
@@ -374,6 +405,40 @@ el.copy.addEventListener("click", async () => {
     el.copy.textContent = "Copy failed";
   }
   setTimeout(() => (el.copy.textContent = "Copy"), 1200);
+});
+
+// Shows the reading overlay on the active tab; throws on pages that cannot be scripted.
+async function showOverlay(text, title) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: showReaderOverlay, args: [text, title] });
+}
+
+el.read.addEventListener("click", async () => {
+  const text = el.output.textContent;
+  const title = meta.title;
+  // Must be the first call: the permission prompt needs the click's user gesture.
+  // Resolves at once (no prompt) when access was granted before.
+  const granted = await chrome.permissions.request({ origins: ["<all_urls>"] }).catch(() => false);
+  if (granted) {
+    try {
+      await showOverlay(text, title);
+      return;
+    } catch {
+      // Restricted page (chrome://, Web Store, PDF viewer, …): use a window instead.
+    }
+  }
+  await chrome.storage.session.set({ reader: { text, title } });
+  const { availLeft = 0, availTop = 0, availWidth, availHeight } = window.screen;
+  const width = Math.min(960, availWidth - 40);
+  const height = Math.min(900, Math.round(availHeight * 0.85));
+  chrome.windows.create({
+    url: "reader.html",
+    type: "popup",
+    width,
+    height,
+    left: Math.round(availLeft + (availWidth - width) / 2),
+    top: Math.round(availTop + (availHeight - height) / 2),
+  });
 });
 
 // ---------- persistence of last input/summary ----------

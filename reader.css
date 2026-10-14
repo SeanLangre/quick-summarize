@@ -1,0 +1,13 @@
+:root { --bg: #fbfaf7; --fg: #23211e; --muted: #77736c; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1c1b19; --fg: #e6e2da; --muted: #9a958c; }
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body { margin: 0; padding: 48px 32px 64px; color: var(--fg); }
+article { user-select: none; max-width: 72ch; margin: 0 auto; font: 22px/1.7 Charter, "Bitstream Charter", Georgia, "Iowan Old Style", serif; }
+h1 { margin: 0 0 24px; font: 600 16px/1.4 system-ui, sans-serif; color: var(--muted); }
+#text { word-break: break-word; hyphens: auto; }
+#text p { margin: 0 0 1em; white-space: pre-wrap; }
+#text p.item { margin-bottom: 1.1em; padding-left: 1.2em; text-indent: -1.2em; }
+[hidden] { display: none !important; }

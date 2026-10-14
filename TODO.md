@@ -5,7 +5,6 @@
 - [ ] `lib/llama.js` against the running server: `health`, `props`, `tokenize`, streaming chat
 - [ ] Context check and the "too long" / "Summarize first part" path
 - [ ] Right-click *Summarize selection* and *Summarize page*, including when the panel is already open
-- [ ] Clear button resets input, summary and notes
 - [ ] Images: server without `--mmproj` shows the vision error
 - [ ] Images: confirm the token estimate against the server's real `prompt_tokens`
 - [ ] Length dropdown persists across browser restarts

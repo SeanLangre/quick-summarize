@@ -23,21 +23,20 @@
     <textarea id="input" placeholder="Paste text here, or right-click a page or selection → Quick Summarize…" rows="8"></textarea>
 
     <div id="images" class="images" hidden></div>
-    <div class="row">
-      <button id="add-image" type="button">Add image…</button>
-      <input id="file" type="file" accept="image/*" multiple hidden>
-      <span class="meta" id="image-hint">or paste / drop an image</span>
-    </div>
+    <div class="meta" id="image-hint">Paste or drop images to include them</div>
 
     <div class="row">
-      <label>Length
+      <label>Length:
         <select id="length">
           <option value="short">Short</option>
           <option value="medium" selected>Medium</option>
           <option value="long">Long</option>
         </select>
       </label>
-      <span class="spacer"></span>
+    </div>
+
+    <div class="row">
+      <button id="summarize-page" type="button" disabled title="Summarize all text on the current page">Summarize page</button>
       <button id="summarize" type="button" class="primary" disabled>Summarize</button>
       <button id="cancel" type="button" disabled>Cancel</button>
     </div>
@@ -54,8 +53,8 @@
         <h2>Summary</h2>
         <span class="spacer"></span>
         <span id="spinner" class="spinner" hidden></span>
+        <button id="read" type="button" disabled title="Open in a reading window">Read</button>
         <button id="copy" type="button" disabled>Copy</button>
-        <button id="clear" type="button" disabled>Clear</button>
       </div>
       <div id="output"></div>
       <div id="cutoff" class="note warn" hidden>The summary was cut off (token limit reached).</div>
@@ -75,6 +74,7 @@
       </select>
     </label>
     <label class="check"><input id="s-listMode" type="checkbox"> List mode: summarize as a strict bullet list</label>
+    <label class="check"><input id="s-autoRead" type="checkbox"> Open the reading overlay when a summary is done</label>
     <label class="check"><input id="s-clearOnSummarize" type="checkbox"> Clear text and images when summarizing</label>
     <label>Temperature <input id="s-temperature" type="number" min="0" max="2" step="0.1"></label>
     <div class="row"><button id="s-save" type="button">Save</button><span id="s-saved" class="meta"></span></div>

@@ -8,6 +8,7 @@
   "background": { "service_worker": "background.js", "type": "module" },
   "permissions": ["sidePanel", "contextMenus", "storage", "scripting", "activeTab"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "optional_host_permissions": ["<all_urls>"],
   "commands": {
     "summarize-selection": {
       "suggested_key": { "default": "Alt+Shift+S" },

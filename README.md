@@ -49,7 +49,7 @@ The only external piece is `llama-server` from llama.cpp (see above).
 4. In `chrome://extensions`, enable Developer mode → **Load unpacked** → select this folder.
 5. Click the toolbar icon to open the side panel, or right-click a page or selection →
    *Summarize page* / *Summarize selection*, or select text and press `Alt+Shift+S`
-   (see [Keyboard shortcuts](#keyboard-shortcuts)).
+   (see [Keyboard shortcuts](#keyboard-shortcuts)). In the panel, **Summarize page** summarizes all text on the current tab.
 6. Check the panel shows a green *Server ready* dot. If it can't connect, fix the base URL under **Settings**.
 
 ## The model server
@@ -70,7 +70,7 @@ The extension talks to a local `llama-server` instance (default `http://127.0.0.
 flowchart LR
     subgraph Chrome
         BG["background.js (service worker)<br/>• context menu and keyboard shortcuts: selection / page<br/>• grabs text via chrome.scripting<br/>• stashes it in chrome.storage.session<br/>• opens the side panel"]
-        SP["sidepanel.html / js<br/>• text box, image thumbnails, length, Summarize / Cancel / Copy / Clear<br/>• health + context checks, settings<br/>• keeps last input / summary in storage.session"]
+        SP["sidepanel.html / js<br/>• text box, image thumbnails, length, Summarize / Summarize page / Cancel / Copy / Read<br/>• health + context checks, settings<br/>• keeps last input / summary in storage.session"]
         BG -- "storage.session (pending)" --> SP
     end
     SP -- "fetch (streaming)" --> LS["llama-server<br/>127.0.0.1:8080"]
@@ -87,7 +87,7 @@ flowchart TD
     root["quick-summarize/"]
     root --> manifest["manifest.json"]
     root --> bg["background.js<br/>context menus, shortcuts, text capture, open panel"]
-    root --> sp["sidepanel.html / css / js<br/>UI state, settings, Copy / Cancel / Clear"]
+    root --> sp["sidepanel.html / css / js<br/>UI state, settings, Copy / Cancel / Read"]
     root --> lib["lib/"]
     lib --> llama["llama.js<br/>health, nCtx, tokenize, streamChat<br/>the only code that talks to the server"]
     lib --> prompt["prompt.js<br/>buildMessages, LENGTHS table, image limits and token estimates"]
@@ -121,7 +121,7 @@ flowchart TD
     E2 -.-> R
 ```
 
-1. **Input.** Pasted text, images (paste, drop or file picker), the right-click menu, or a keyboard shortcut. *Selection* uses `window.getSelection().toString()` (keeps line
+1. **Input.** Pasted text, images (paste or drop), the right-click menu, or a keyboard shortcut. *Selection* uses `window.getSelection().toString()` (keeps line
    breaks); *page* uses `document.body.innerText`. The service worker writes `{text, source, title, url}` to
    `chrome.storage.session` and opens the panel inside the menu-click or command handler (it needs a user gesture). The panel picks
    it up on load and on `storage.onChanged`.
@@ -161,7 +161,7 @@ Temperature 0.3, `enable_thinking: false`. `model` is added only if set in setti
 
 ## Images
 
-Add up to 4 images by pasting (Ctrl+V with an image on the clipboard), dragging files onto the panel, or **Add image…**.
+Add up to 4 images by pasting (Ctrl+V with an image on the clipboard), or dragging files onto the panel.
 Images are downscaled to at most 1280 px on the long edge and re-encoded as JPEG in the panel, then sent as
 `image_url` data-URL parts in the same chat request. Text and images can be combined; with no text the model
 describes the images.
@@ -176,7 +176,7 @@ describes the images.
 
 Stored in `chrome.storage.local`:
 
-- **Saved immediately:** the Length dropdown next to Summarize, "List mode" (summarize as a strict bullet list), and "Clear text and images when summarizing" (clears the
+- **Saved immediately:** the Length dropdown next to Summarize, "List mode" (summarize as a strict bullet list), "Open the reading overlay when a summary is done" (asks for page access when you tick it), and "Clear text and images when summarizing" (clears the
   text box and images as soon as a request is sent; they come back if it fails or is cancelled with no output).
 - **Saved with the Save button** (collapsible section): base URL, model (optional), API key (optional), temperature.
 
@@ -190,7 +190,7 @@ Stored in `chrome.storage.local`:
 | Too long | Token count vs budget, "Summarize first part" |
 | Waiting / streaming | Spinner until the first token, then live text; Cancel enabled |
 | Error | The server's error message (first 300 chars), Retry |
-| Done | Summary, Copy, "cut off" note if `finish_reason: length`; Clear resets the panel |
+| Done | Summary, Copy, Read (centered reading overlay on the page; a popup window on pages that cannot be scripted), "cut off" note if `finish_reason: length` |
 
 ## Security notes
 
@@ -198,3 +198,4 @@ Stored in `chrome.storage.local`:
 - Keep `llama-server` bound to `127.0.0.1`. It allows cross-origin requests by default, so any website you visit can
   call it from your browser. If that matters, start it with `--api-key` and put the key in the extension settings.
 - Page text is read only on an explicit user action (menu click or keyboard shortcut). No content script runs on every page.
+- **Read** asks once for optional access to all sites (`<all_urls>`) so it can show the summary as an overlay on the current page. It only injects that overlay when you click Read; decline and it opens a popup window instead.

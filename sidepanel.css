@@ -44,3 +44,4 @@ details input[type=text], details input[type=password], details input[type=numbe
 main.drag textarea { outline: 2px dashed var(--accent); }
 details label.check { display: flex; align-items: center; gap: 6px; }
 [hidden] { display: none !important; }
+#image-hint { margin-top: 4px; }
